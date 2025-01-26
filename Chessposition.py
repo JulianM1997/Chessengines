@@ -78,9 +78,10 @@ class ChessPosition():
                 piece_on_current_square=self.Board[rownumber][columnnumber]
                 #print(piece_on_current_square)
                 if piece_on_current_square!=None:
-                    piecesmoves=self.piecessemilegalmoves(rownumber,columnnumber)
-                    resulting_positions=[self.applymove(rownumber,columnnumber,*move) for move in piecesmoves]
-                    ReachablePositions+=[position for position in resulting_positions if not position.nonmovingPlayerinCheck()]
+                    if piece_on_current_square.is_white()==self.whitesmove:
+                        piecesmoves=self.piecessemilegalmoves(rownumber,columnnumber)
+                        resulting_positions=[self.applymove(rownumber,columnnumber,*move) for move in piecesmoves]
+                        ReachablePositions.extend([position for position in resulting_positions if not position.nonmovingPlayerinCheck()])
         return ReachablePositions
     
     def randommove(self)-> "ChessPosition":
@@ -99,7 +100,7 @@ class ChessPosition():
         return kingssquare in self.reachablesquares()
 
     def reachablesquares(self) -> list[tuple[int,int]]:
-        """Returns: All possible moves a piece any piece can make. Move might be illegal if own king hangs afterwards.
+        """Returns: All possible moves any piece can make. Move might be illegal if own king hangs afterwards.
         
         Check, if pawn queened or enpassant happened before applying."""
         ReachableSquares=[]
@@ -107,8 +108,9 @@ class ChessPosition():
             for columnnumber in range(8):
                 piece_on_current_square=self.Board[rownumber][columnnumber]
                 if piece_on_current_square is not None:
-                    CurrentPiecesMoves=self.piecessemilegalmoves(rownumber,columnnumber)
-                    ReachableSquares+=[newsquare[:2] for newsquare in CurrentPiecesMoves]
+                    if piece_on_current_square.is_white()==self.whitesmove:
+                        CurrentPiecesMoves=self.piecessemilegalmoves(rownumber,columnnumber)
+                        ReachableSquares+=[newsquare[:2] for newsquare in CurrentPiecesMoves]
         return ReachableSquares
         
 
@@ -118,13 +120,17 @@ class ChessPosition():
         
         Check, if pawn queened or enpassant happened before applying."""
         piece=self.Board[rowNumber][columnNumber]
+        if piece.is_white()!=self.whitesmove:
+            raise ValueError("piecessemilegalmoves is not supposed to be called with pieces of the other colour!")
         Rawmoves:list[tuple[int,int]|tuple[int,int,bool]]=[]
         match piece:
             case None:
                 raise ValueError(f"There is no piece on {(rowNumber,columnNumber)}")
             case ChessPieces.BlackPawn:
+                #print(str(self))
                 Rawmoves=legalPawnmoves(rowNumber,columnNumber,False,self.Board,self.enpassantablefile)
             case ChessPieces.WhitePawn:
+                #print(str(self))
                 Rawmoves=legalPawnmoves(rowNumber,columnNumber,True,self.Board,self.enpassantablefile)
             case ChessPieces.BlackKnight|ChessPieces.WhiteKnight:
                 Rawmoves=legalknightmoves(rowNumber,columnNumber,self.Board)
@@ -145,8 +151,9 @@ class ChessPosition():
                 Actualmoves.append((newrow,newcol))
             elif Beatenpiece.is_white()!=piece.is_white():
                 Actualmoves.append((newrow,newcol))
-        """print(str(self))
-        print(f"Legal moves of piece on {(rowNumber,columnNumber)} = {Actualmoves}")"""
+        #print(str(self))
+        #print(f"Legal moves of piece on {(rowNumber,columnNumber)} = {Actualmoves}")
+        #sleep(5)
         return Actualmoves
     def applymove(self, startrow: int, startcolumn: int, endrow: int, endcolumn: int, enpassanthappened: bool = False):
         """Copyself=deepcopy(self)
@@ -157,6 +164,8 @@ class ChessPosition():
             enpassantrow= 3 if self.whitesmove else 4
             NewBoard[enpassantrow][self.enpassantablefile]=None
         movedpiece=self.Board[startrow][startcolumn]
+        if movedpiece.is_pawn() and endrow in [0,7]:
+            movedpiece=ChessPieces.WhiteQueen if movedpiece==ChessPieces.WhitePawn else ChessPieces.BlackQueen
         NewBoard[endrow][endcolumn]=movedpiece
         NewBoard[startrow][startcolumn]=None
         newenpassantablefile:int|None=None
@@ -178,5 +187,5 @@ def randomgame():
 
     
 if __name__=="__main__":
-    ChessPosition().randommove()
+    randomgame()
     pass

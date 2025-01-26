@@ -1,18 +1,20 @@
+from time import sleep
+
 def legalPawnmoves(row: int, column: int, WhitePawn:bool, Board: list[list],enpassantablefile: int|None)-> list[tuple[int,int,bool]]:
     """Returns: list of legal moves containing row, column and wether enpassant happened.
      
      List of legal Moves includes the moves which are physically possible. The moves might leave the king hanging or capture own pieces.
     """
+    #print(f"{row = }, {column = }, {WhitePawn = }")
     if not WhitePawn:
         MirroredMoves: list[tuple[int,int,bool]]=legalPawnmoves(7-row,column,True, Board, enpassantablefile)
         return [(7-Row, Column,enpassanthappened) for (Row,Column,enpassanthappened) in MirroredMoves]
-    
     Moves=[]
     #Straightmoves
     if Board[row+1][column] is None:
         Moves.append((row+1,column,False))
         if row==1:
-            if Board[row+2][column]:
+            if Board[row+2][column] is None:
                 Moves.append((row+2,column,False))
     #En passant
     if enpassantablefile is not None and row==4:
@@ -21,10 +23,16 @@ def legalPawnmoves(row: int, column: int, WhitePawn:bool, Board: list[list],enpa
     #Normal captures
     if column+1<8:
         if Board[row+1][column+1] is not None:
+            #print(f"I found something to eat on {(row+1,column+1)}. It's a {Board[row+1][column+1]}")
+            #sleep(3)
             Moves.append((row+1,column+1,False))
     if column-1>=0:
         if Board[row+1][column-1] is not None:
+            #print(f"I found something to eat on {(row+1,column-1)}. It's a {Board[row+1][column-1]}")
+            #sleep(3)
             Moves.append((row+1,column-1,False))
+    #print(Moves)
+    #sleep(20)
     return Moves
 
 def legalstraightmoves(row: int, column: int, Board: list[list])-> list[tuple[int,int]]:
