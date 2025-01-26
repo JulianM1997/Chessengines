@@ -1,4 +1,6 @@
 from time import sleep
+from enum import Flag
+from Chessposition import Castling
 
 def legalPawnmoves(row: int, column: int, WhitePawn:bool, Board: list[list],enpassantablefile: int|None)-> list[tuple[int,int,bool]]:
     """Returns: list of legal moves containing row, column and wether enpassant happened.
@@ -107,7 +109,4 @@ def legalknightmoves(row: int, column: int, Board: list[list])-> list[tuple[int,
     theoreticalmoves=[(factorrow*i,factorcol*j) for i,j in Vectors for factorcol in Factors for factorrow in Factors]
     return [(row+i,column+j) for (i,j) in theoreticalmoves if (0<=row+i<8 and 0<=column+j<8)]
 
-def legalkingmoves(row: int, column: int, Board: list[list])-> list[tuple[int,int]]:
-    ammounts=[-1,0,1]
-    theoreticalmoves=[(leftstep,rightstep) for leftstep in ammounts for rightstep in ammounts if (leftstep,rightstep)!=(0,0)]
-    return [(row+i,column+j) for (i,j) in theoreticalmoves if (0<=row+i<8 and 0<=column+j<8)]
+
