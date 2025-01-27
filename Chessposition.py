@@ -4,6 +4,7 @@ from LegalPieceMoves import *
 import random
 from time import sleep
 from copy import deepcopy
+import math
 
 
 class ChessPieces(Enum):
@@ -122,7 +123,7 @@ def eval_by_randomgames(Position: "ChessPosition", numberofgames: int=100) -> fl
     score=0
     #Play random games and figure out and calculate average result.
     for i in range(numberofgames):
-        Game=self
+        Game=Position
         while (moves:=Game.possibleMoves())!=[]:
             Game=random.choice(moves)
         gamevalue=1 if Game.whitesmove else -1
@@ -133,16 +134,16 @@ def eval_by_randomgames(Position: "ChessPosition", numberofgames: int=100) -> fl
 
 class ChessPosition():
     def __init__(self, Board: list[list[ChessPieces|None]]|None=None,whitesmove: bool= True,enpassantablefile: int|None=None, Castlingright: list[bool]=[True]*4):
-        if Board==None:
-            Board=[[None]*8 for Row in range(8)]
-            Board[0]=[ChessPieces.WhiteRook,ChessPieces.WhiteKnight,ChessPieces.WhiteBishop,ChessPieces.WhiteQueen,ChessPieces.WhiteKing,ChessPieces.WhiteBishop,ChessPieces.WhiteKnight,ChessPieces.WhiteRook]
-            Board[-1]=[Piece.invertcolor() for Piece in Board[0]]
-            Board[1]=[ChessPieces.WhitePawn]*8
-            Board[-2]=[ChessPieces.BlackPawn]*8
-        self.Board=Board
-        self.whitesmove=whitesmove
-        self.enpassantablefile=enpassantablefile
-        self.Castlingrights=Castlingright
+        if Board == None:
+            Board = [[None]*8 for Row in range(8)]
+            Board[0] = [ChessPieces.WhiteRook,ChessPieces.WhiteKnight,ChessPieces.WhiteBishop,ChessPieces.WhiteQueen,ChessPieces.WhiteKing,ChessPieces.WhiteBishop,ChessPieces.WhiteKnight,ChessPieces.WhiteRook]
+            Board[-1] = [Piece.invertcolor() for Piece in Board[0]]
+            Board[1] = [ChessPieces.WhitePawn]*8
+            Board[-2] = [ChessPieces.BlackPawn]*8
+        self.Board:list[list[ChessPieces|None]] = Board
+        self.whitesmove:bool = whitesmove
+        self.enpassantablefile:bool = enpassantablefile
+        self.Castlingrights:list[bool] = Castlingright
         """self.white_can_castle=white_can_castle
         self.white_can_castle_queenside=white_can_castle_queenside
         self.black_can_castle=black_can_castle
@@ -289,11 +290,39 @@ class ChessPosition():
         return True
     def eval_by_material(self) -> float:
         return sum(piece.pointvalue_in_game() for row in self.Board for piece in row if piece is not None)
+    
+    def eval_by_placement(self) -> float:
+        return sum((abs(3.5-i)+abs(3.5-j))*(piece.iswhite()-0.5)/500 for i in range(8) for j in range(8) if (piece:=self.Board[i][j]) is not None)
+    
+    def eval_without_depth(self) -> float:
+        return self.eval_by_material+self.eval_by_placement
 
-    def eval(self, depth: int, depth0method=eval_by_material) -> float:
+    def is_check(self):
+        ChessPosition(self.Board,not self.whitesmove,None,self.Castlingrights)
+
+    def eval(self, depth: int, depth0method=eval_by_material) -> tuple[float,"ChessPosition"]:
+        """Returns: Evaluation of the position and the best move"""
+        moves=self.possibleMoves()
+        if len(moves)==0:
+            #Player is out of moves so he either lost or it's a draw
+            sign=-1 if self.whitesmove else 1
+            value=float('inf') if self.is_check() else 0
+            return sign*value
         if depth<=0:
-            return depth0method(self)
-        raise ValueError("deeper level of evals not yet implemented")
+            return depth0method(self),self.randommove()
+        
+        cost=math.log(len(moves))#Incentivizing forcing moves
+        eval_and_move=[]
+        for move in moves:
+            directgain:float =abs(self.eval_by_material()-move.eval_by_material())#incentivizing captures
+            evaluation,_=move.eval(depth-(cost/(1+directgain)),depth0method)
+            eval_and_move.append((evaluation,move))
+        if self.whitesmove:
+            return max(eval_and_move, key=lambda x: x[0])
+        return min(eval_and_move, key=lambda x: x[0])
+    
+    def bestmove(self,*args):
+        return self.eval(*args)[1]
     
     def castlingcolour(self) -> Castling:
         if self.whitesmove:
@@ -317,6 +346,14 @@ def eval_in_randomgame(moves_before_eval,depth=0):
     print(str(Position))
     print(Position.eval(depth))
 
+def Game_of_bestmoves(depth):
+    Position=ChessPosition()
+    while True:
+        print(str(Position))
+        print(len(Position.possibleMoves()))
+        Position=Position.bestmove(depth)
+
+
 if __name__=="__main__":
-    eval_in_randomgame(100)
+    Game_of_bestmoves(5)
     pass

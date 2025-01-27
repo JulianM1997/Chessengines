@@ -1,6 +1,5 @@
 from time import sleep
 from enum import Flag
-from Chessposition import Castling
 
 def legalPawnmoves(row: int, column: int, WhitePawn:bool, Board: list[list],enpassantablefile: int|None)-> list[tuple[int,int,bool]]:
     """Returns: list of legal moves containing row, column and wether enpassant happened.
