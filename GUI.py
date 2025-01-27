@@ -71,8 +71,13 @@ while running:
             print(f"Clicked on {row}, {col}. Found a {piece}")
             if PIECE_SELECTED:
                 PIECE_SELECTED=False
+                if not (row==selected_row and col==selected_col):
+                    if Position.move_is_legal(selected_row,selected_col,row,col):
+                        Position=Position.applymove(selected_row,selected_col,row,col)
+                    else:
+                        print("not a legal move")
                 pass
-            else:
+            elif piece is not None:
                 selected_row=row
                 selected_col=col
                 PIECE_SELECTED=True

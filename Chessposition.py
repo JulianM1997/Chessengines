@@ -21,26 +21,35 @@ class ChessPieces(Enum):
     BlackQueen = 11
     BlackKing = 12
     
-    def is_white(self):
+    def is_white(self)->bool:
         return self.value <= 6
 
-    def is_pawn(self):
+    def is_pawn(self)->bool:
         return self==ChessPieces.WhitePawn or self==ChessPieces.BlackPawn
     
-    def is_king(self):
+    def is_king(self)->bool:
         return self==ChessPieces.WhiteKing or self==ChessPieces.BlackKing
     
-    def is_knight(self):
+    def is_knight(self)->bool:
         return self==ChessPieces.WhiteKnight or self==ChessPieces.BlackKnight
     
-    def is_bishop(self):
+    def is_bishop(self)->bool:
         return self==ChessPieces.WhiteBishop or self==ChessPieces.BlackBishop
     
-    def is_rook(self):
+    def is_rook(self)->bool:
         return self==ChessPieces.WhiteRook or self==ChessPieces.BlackRook
     
-    def is_queen(self):
+    def is_queen(self)->bool:
         return self==ChessPieces.WhiteQueen or self==ChessPieces.BlackQueen
+    
+    def moves_diagonal(self)->bool:
+        return self.is_bishop() or self.is_queen()
+    
+    def moves_straight(self)->bool:
+        return self.is_rook() or self.is_queen()
+    
+    def white_version_of_self(self)->"ChessPieces":
+        return self if self.is_white() else self.invertcolor()
     
     def symbol(self) -> str:
         match self:
@@ -70,7 +79,7 @@ class ChessPieces(Enum):
                 return '♚'
             
     def pointvalue_in_game(self) -> float:
-        sign=1 if self.is_white else -1
+        sign=1 if self.is_white() else -1
         if self.is_rook():
             value=5
         elif self.is_knight():
@@ -86,11 +95,7 @@ class ChessPieces(Enum):
         else:
             raise ValueError("Seems like I forgot about a type")
         return value*sign
-
-        
-
-    
-    def invertcolor(self):
+    def invertcolor(self)->"ChessPieces":
         return ChessPieces(self.value-6 if self.value>6 else self.value+6)
     
 class Castling(Flag):
@@ -108,6 +113,42 @@ class Castling(Flag):
             Board[row][-1]=None
             Board[row][5]=rightcoloured_rook
         return Board
+    
+    def Castlinglegal(self,Position:"ChessPosition")->bool:
+        if not Position.Castlingrights[self.value]:
+            return False
+        if Position.whitesmove!=(Castling.White in self):
+            return False
+        row=0 if Castling.White in self else 7
+        rookcol=0 if Castling.Queenside in self else 7
+        increment=-1 if Castling.Queenside in self else 1
+        for col in range(4+increment,rookcol,increment):
+            if Position.Board[row][col] is not None:
+                return False
+            if Position.square_attacked(row,col):
+                return False
+        return True
+    
+    def squares(self)->tuple[tuple[int,int],tuple[int,int]]:
+        """Returns: (Startrow,Startcolumn),(Endrow,endcolumn) of king"""
+        row=0 if Castling.White in self else 7
+        startcol=4
+        finalcol=2 if Castling.Queenside else 6
+        return (row,startcol),(row,finalcol)
+    
+    def final_king_col(self):
+        return 2 if Castling.Queenside in self else 6
+
+def castlingcolor(white:bool)->Castling:
+    return Castling.White if white else Castling(0)
+
+def castlingdirection(queenside: bool)->Castling:
+    return Castling.Queenside if queenside else Castling(0)
+
+def enumCastling():
+    for i in [Castling(0),Castling.Queenside]:
+        for j in [Castling(0),Castling.White]:
+            yield i|j
 
 def legalkingmoves(row: int, column: int, Board: list[list], castlingrights:list[bool],castlingcolour: Castling)-> list[tuple[int,int]]:
     castlingmoves=[]
@@ -142,7 +183,7 @@ class ChessPosition():
             Board[-2] = [ChessPieces.BlackPawn]*8
         self.Board:list[list[ChessPieces|None]] = Board
         self.whitesmove:bool = whitesmove
-        self.enpassantablefile:bool = enpassantablefile
+        self.enpassantablefile:int|None = enpassantablefile
         self.Castlingrights:list[bool] = Castlingright
         """self.white_can_castle=white_can_castle
         self.white_can_castle_queenside=white_can_castle_queenside
@@ -152,6 +193,96 @@ class ChessPosition():
     def __str__(self):
         return tabulate([["" if Piece is None else Piece.symbol() for Piece in row] for row in self.Board[::-1]],tablefmt="grid")
     
+    def move_is_legal(self,startrow,startcol,endrow,endcol):
+        print(startrow,startcol,endrow,endcol)
+        if (startrow,startcol)==(endrow,endcol):
+            return False
+        piece=self.Board[startrow][startcol]
+        print(piece)
+        if piece is None:
+            return False
+        if piece.is_white()!=self.whitesmove:
+            return False
+        def legal_diagonalmove() -> bool:
+            if not abs(startrow-endrow)==abs(startcol-endcol):
+                return False
+            rowsign=1 if endrow>startrow else -1
+            colsign=1 if endcol>startcol else -1
+            intermediate_row=startrow+rowsign
+            intermediate_col=startcol+colsign
+            while intermediate_row!=endrow:
+                intermediate_square_occupant=self.Board[intermediate_row][intermediate_col]
+                if intermediate_square_occupant is not None:
+                    return False
+                intermediate_row+=rowsign
+                intermediate_col+=colsign
+            return self.square_empty_or_containing_opponent(endrow,endcol)
+        def legal_straightmove() -> bool:
+            if startcol!=endcol and startrow!=endrow:
+                return False
+            rowsign=(startrow!=endrow)*(1 if endrow>startrow else -1)
+            colsign=(startcol!=endcol)*(1 if endcol>startcol else -1)
+            intermediate_row=startrow+rowsign
+            intermediate_col=startcol+colsign
+            while (intermediate_row,intermediate_col)!=(endrow,endcol):
+                intermediate_square_occupant=self.Board[intermediate_row][intermediate_col]
+                if intermediate_square_occupant is not None:
+                    return False
+                intermediate_row+=rowsign
+                intermediate_col+=colsign
+            return self.square_empty_or_containing_opponent(endrow,endcol)
+        def legal_knightmove()->bool:
+            if (abs(startrow-endrow),abs(startcol-endcol)) in [(2,1),(1,2)]:
+                return self.square_empty_or_containing_opponent(endrow,endcol)
+            return False
+        def legal_kingmove()->bool:
+            if abs(startrow-endrow)<=1 and abs(startcol-endcol)<=1:
+                return self.square_empty_or_containing_opponent(endrow,endcol)
+            for i in enumCastling():
+                print(f"{i = }, {i.Castlinglegal(self) = }, {i.final_king_col() = }")
+                if i.Castlinglegal(self) and endcol==i.final_king_col():
+                    return True
+            return False
+
+        def legal_pawnmove()->bool:
+            if abs(startcol-endcol)>=2:
+                return False
+            if startcol==endcol:#Straight pawn moves
+                if startrow+1==endrow:
+                    return self.Board[endrow][endcol] is None
+                expected_startrow=1 if self.whitesmove else 6
+                increments=1 if self.whitesmove else -1#sign of the direction in which players pawns move
+                Wrong_direction=(endrow-startrow)*increments<0
+                if Wrong_direction or abs(endrow-startrow)>2 or startrow!=expected_startrow:
+                    return False
+                return (self.Board[startrow+increments][startcol] is None) and (self.Board[startrow+(2*increments)][startcol] is None)
+            #Diagonal pawn moves
+            if abs(startcol-endcol)!=1:
+                return False
+            if self.square_containing_opponent(endrow,endcol):
+                return True
+            enpassantrow=4 if self.whitesmove else 3
+            if self.enpassantablefile is None or startrow!=enpassantrow:
+                return False
+            return self.enpassantablefile==endcol
+
+        match piece.white_version_of_self():
+            case ChessPieces.WhiteKnight:
+                return legal_knightmove()
+            case ChessPieces.WhiteRook:
+                return legal_straightmove()
+            case ChessPieces.WhiteBishop:
+                return legal_diagonalmove()
+            case ChessPieces.WhiteQueen:
+                return legal_diagonalmove() or legal_straightmove()
+            case ChessPieces.WhiteKing:
+                return legal_kingmove()
+            case ChessPieces.WhitePawn:
+                return legal_pawnmove()
+            case _:
+                raise ValueError("Unexpected Piecetype")
+        #Missing:
+        #-->Avoiding Check
     def possibleMoves(self) -> list["ChessPosition"]:
         if self.only_kings_on_board():
             return []
@@ -203,6 +334,8 @@ class ChessPosition():
         
         Check, if pawn queened or enpassant happened before applying."""
         piece=self.Board[rowNumber][columnNumber]
+        if piece is None:
+            raise ValueError("piecessemilegalmoves is not supposed to be called on empty squares!")
         if piece.is_white()!=self.whitesmove:
             raise ValueError("piecessemilegalmoves is not supposed to be called with pieces of the other colour!")
         Rawmoves:list[tuple[int,int]|tuple[int,int,bool]]=[]
@@ -240,8 +373,16 @@ class ChessPosition():
         return Actualmoves
     
     def applymove(self, startrow: int, startcolumn: int, endrow: int, endcolumn: int, enpassanthappened: bool = False):
+        """Returns: Position after the inserted move.
+        
+        Only use after checking move with move_is_legal"""
         NewBoard=deepcopy(self.Board)
         movedpiece=self.Board[startrow][startcolumn]
+        if movedpiece is None:
+            raise ValueError("applymove is not meant to be called from squares without pieces")
+        if movedpiece.is_white()!=self.whitesmove:
+            strpiececolor="white" if movedpiece.is_white() else "black"
+            raise ValueError(f"It's not {strpiececolor}'s move")
 
         #Handling en passant
         if enpassanthappened:
@@ -265,9 +406,9 @@ class ChessPosition():
             for direction in [Castling.Queenside,Castling(0)]:
                 newCastlingrights[(self.castlingcolour()|direction).value]=False
             if abs(startcolumn-endcolumn)==2:
-                if startcolumn==2:
+                if endcolumn==2:
                     direction=Castling.Queenside
-                elif startcolumn==6:
+                elif endcolumn==6:
                     direction=Castling(0)
                 else:
                     raise ValueError("King castle onto a unexpected square")
@@ -292,10 +433,10 @@ class ChessPosition():
         return sum(piece.pointvalue_in_game() for row in self.Board for piece in row if piece is not None)
     
     def eval_by_placement(self) -> float:
-        return sum((abs(3.5-i)+abs(3.5-j))*(piece.iswhite()-0.5)/500 for i in range(8) for j in range(8) if (piece:=self.Board[i][j]) is not None)
+        return sum((abs(3.5-i)+abs(3.5-j))*(piece.is_white()-0.5)/500 for i in range(8) for j in range(8) if (piece:=self.Board[i][j]) is not None)
     
     def eval_without_depth(self) -> float:
-        return self.eval_by_material+self.eval_by_placement
+        return self.eval_by_material()+self.eval_by_placement()
 
     def is_check(self):
         ChessPosition(self.Board,not self.whitesmove,None,self.Castlingrights)
@@ -307,7 +448,7 @@ class ChessPosition():
             #Player is out of moves so he either lost or it's a draw
             sign=-1 if self.whitesmove else 1
             value=float('inf') if self.is_check() else 0
-            return sign*value
+            return sign*value, self
         if depth<=0:
             return depth0method(self),self.randommove()
         
@@ -328,6 +469,22 @@ class ChessPosition():
         if self.whitesmove:
             return Castling.White
         return Castling(0)
+    
+    def square_empty_or_containing_opponent(self,row,col):
+        piece=self.Board[row][col]
+        if piece is None:
+            return True
+        return piece.is_white()!=self.whitesmove
+    
+    def square_containing_opponent(self,row,col):
+        piece=self.Board[row][col]
+        if piece is None:
+            return False
+        return piece.is_white()!=self.whitesmove
+    
+    def square_attacked(self,row,col):
+        print("square_attacked not yet implemented!")
+        return False
 
            
 
