@@ -248,10 +248,10 @@ class ChessPosition():
             if abs(startcol-endcol)>=2:
                 return False
             if startcol==endcol:#Straight pawn moves
-                if startrow+1==endrow:
+                increments=1 if self.whitesmove else -1#sign of the direction in which players pawns move
+                if startrow+increments==endrow:
                     return self.Board[endrow][endcol] is None
                 expected_startrow=1 if self.whitesmove else 6
-                increments=1 if self.whitesmove else -1#sign of the direction in which players pawns move
                 Wrong_direction=(endrow-startrow)*increments<0
                 if Wrong_direction or abs(endrow-startrow)>2 or startrow!=expected_startrow:
                     return False
@@ -372,7 +372,7 @@ class ChessPosition():
         #sleep(5)
         return Actualmoves
     
-    def applymove(self, startrow: int, startcolumn: int, endrow: int, endcolumn: int, enpassanthappened: bool = False):
+    def applymove(self, startrow: int, startcolumn: int, endrow: int, endcolumn: int):
         """Returns: Position after the inserted move.
         
         Only use after checking move with move_is_legal"""
@@ -385,13 +385,17 @@ class ChessPosition():
             raise ValueError(f"It's not {strpiececolor}'s move")
 
         #Handling en passant
-        if enpassanthappened:
-            enpassantrow= 3 if self.whitesmove else 4
-            NewBoard[enpassantrow][self.enpassantablefile]=None
-
         newenpassantablefile:int|None=None
-        if movedpiece.is_pawn() and abs(startrow-endrow)==2:
-            newenpassantablefile=startcolumn
+        enpassanthappened=False
+        if movedpiece.is_pawn():
+            if abs(startrow-endrow)==2:
+                newenpassantablefile=startcolumn
+            enpassanthappened=startcolumn!=endcolumn and (self.Board[endrow][endcolumn] is None)
+            if enpassanthappened:
+                if (endcolumn!=self.enpassantablefile or startrow!=self.en_passant_startrow() or endcolumn!=self.enpassantablefile or self.Board[startrow][endcolumn] is None):
+                    raise IndexError("Something peculiar en-passant-like has happened")
+                NewBoard[startrow][endcolumn]=None
+                
 
         #Handling Queening
         if movedpiece.is_pawn() and endrow in [0,7]:
@@ -423,6 +427,11 @@ class ChessPosition():
                     
         return ChessPosition(NewBoard,not self.whitesmove,newenpassantablefile,newCastlingrights)
     
+    def en_passant_startrow(self) -> bool:
+        return 4 if self.whitesmove else 3
+    
+    '''def en_passant_endrow(self)->bool:
+        return 5 if self.whitesmove else 2'''
     def only_kings_on_board(self) -> bool:
         for i in range(8):
             for j in range(8):
