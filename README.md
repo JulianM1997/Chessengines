@@ -1,7 +1,7 @@
 # Chessengines
 A project implementing various chess engines in an attempt to get familiar with machine learning
 
-Missing: Draw by repetition, disallowing castling through check, Underpromotion
+Missing: Draw by repetition, Underpromotion
 
 
 Die Schachfiguren stammen aus [Wikipedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).

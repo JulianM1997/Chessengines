@@ -97,6 +97,8 @@ class ChessPieces(Enum):
         return value*sign
     def invertcolor(self)->"ChessPieces":
         return ChessPieces(self.value-6 if self.value>6 else self.value+6)
+    def castlingcolour(self)->"Castling":
+        return Castling.White if self.is_white() else Castling(0)
     
 class Castling(Flag):
     White=1
@@ -127,7 +129,7 @@ class Castling(Flag):
                 return False
             if Position.square_attacked(row,col):
                 return False
-        return True
+        return not Position.square_attacked(row,4)
     
     def squares(self)->tuple[tuple[int,int],tuple[int,int]]:
         """Returns: (Startrow,Startcolumn),(Endrow,endcolumn) of king"""
@@ -193,12 +195,17 @@ class ChessPosition():
     def __str__(self):
         return tabulate([["" if Piece is None else Piece.symbol() for Piece in row] for row in self.Board[::-1]],tablefmt="grid")
     
-    def move_is_legal(self,startrow,startcol,endrow,endcol):
-        print(startrow,startcol,endrow,endcol)
+    def move_is_legal(self,startrow,startcol,endrow,endcol,allow_hanging_king=True):
+        if not allow_hanging_king:
+            if not self.move_is_legal(startrow,startcol,endrow,endcol,True):
+                return False
+            return not self.applymove(startrow,startcol,endrow,endcol).can_take_king()
+            #raise NotImplementedError("move_is_legal can't yet determine wether a move hangs a king")
+        #print(startrow,startcol,endrow,endcol)
         if (startrow,startcol)==(endrow,endcol):
             return False
         piece=self.Board[startrow][startcol]
-        print(piece)
+        #print(piece)
         if piece is None:
             return False
         if piece.is_white()!=self.whitesmove:
@@ -238,6 +245,9 @@ class ChessPosition():
         def legal_kingmove()->bool:
             if abs(startrow-endrow)<=1 and abs(startcol-endcol)<=1:
                 return self.square_empty_or_containing_opponent(endrow,endcol)
+            #Castling
+            if startrow!=endrow:
+                return False
             for i in enumCastling():
                 print(f"{i = }, {i.Castlinglegal(self) = }, {i.final_king_col() = }")
                 if i.Castlinglegal(self) and endcol==i.final_king_col():
@@ -247,8 +257,8 @@ class ChessPosition():
         def legal_pawnmove()->bool:
             if abs(startcol-endcol)>=2:
                 return False
+            increments=1 if self.whitesmove else -1#sign of the direction in which players pawns move
             if startcol==endcol:#Straight pawn moves
-                increments=1 if self.whitesmove else -1#sign of the direction in which players pawns move
                 if startrow+increments==endrow:
                     return self.Board[endrow][endcol] is None
                 expected_startrow=1 if self.whitesmove else 6
@@ -257,7 +267,8 @@ class ChessPosition():
                     return False
                 return (self.Board[startrow+increments][startcol] is None) and (self.Board[startrow+(2*increments)][startcol] is None)
             #Diagonal pawn moves
-            if abs(startcol-endcol)!=1:
+            diagonally_adjacent_in_right_direction=(abs(startcol-endcol)==1) and (startrow+increments==endrow)
+            if not diagonally_adjacent_in_right_direction:
                 return False
             if self.square_containing_opponent(endrow,endcol):
                 return True
@@ -283,6 +294,13 @@ class ChessPosition():
                 raise ValueError("Unexpected Piecetype")
         #Missing:
         #-->Avoiding Check
+        #-->Recognizing draw
+    def new_pieces_possible_moves(self,row:int,col:int,allow_hanging_king:bool):
+        for endrow in range(8):
+            for endcol in range(8):
+                if self.move_is_legal(row,col,endrow,endcol,allow_hanging_king):
+                    yield endrow,endcol
+
     def possibleMoves(self) -> list["ChessPosition"]:
         if self.only_kings_on_board():
             return []
@@ -302,12 +320,13 @@ class ChessPosition():
         return random.choice(self.possibleMoves())
 
 
-    def findnonMovingPlayersKing(self):
+    def findnonMovingPlayersKing(self)->tuple[int,int]:
         searchedKing=ChessPieces.WhiteKing if not self.whitesmove else ChessPieces.BlackKing
         for rownumber in range(8):
             for columnnumber in range(8):
                 if self.Board[rownumber][columnnumber]==searchedKing:
                     return rownumber,columnnumber
+        raise ValueError("Board doesn't seem to have a king")
                 
     def nonmovingPlayerinCheck(self):
         kingssquare: tuple[int,int]=self.findnonMovingPlayersKing()
@@ -378,6 +397,7 @@ class ChessPosition():
         Only use after checking move with move_is_legal"""
         NewBoard=deepcopy(self.Board)
         movedpiece=self.Board[startrow][startcolumn]
+        beatenpiece=self.Board[endrow][endcolumn]
         if movedpiece is None:
             raise ValueError("applymove is not meant to be called from squares without pieces")
         if movedpiece.is_white()!=self.whitesmove:
@@ -390,7 +410,7 @@ class ChessPosition():
         if movedpiece.is_pawn():
             if abs(startrow-endrow)==2:
                 newenpassantablefile=startcolumn
-            enpassanthappened=startcolumn!=endcolumn and (self.Board[endrow][endcolumn] is None)
+            enpassanthappened=startcolumn!=endcolumn and (beatenpiece is None)
             if enpassanthappened:
                 if (endcolumn!=self.enpassantablefile or startrow!=self.en_passant_startrow() or endcolumn!=self.enpassantablefile or self.Board[startrow][endcolumn] is None):
                     raise IndexError("Something peculiar en-passant-like has happened")
@@ -405,7 +425,7 @@ class ChessPosition():
         NewBoard[startrow][startcolumn]=None
 
         #Handling Castling
-        newCastlingrights=self.Castlingrights
+        newCastlingrights=self.Castlingrights[:]
         if movedpiece.is_king():
             for direction in [Castling.Queenside,Castling(0)]:
                 newCastlingrights[(self.castlingcolour()|direction).value]=False
@@ -419,16 +439,26 @@ class ChessPosition():
                 NewBoard=(self.castlingcolour()|direction).apply_castling_to_rook(NewBoard)
             
         if movedpiece.is_rook():
-            if startcolumn==0 or startcolumn==7:
+            if (startcolumn==0 or startcolumn==7) and startrow==self.playing_sides_startrow():
                 direction=Castling(0)
                 if startcolumn==0:
                     direction=Castling.Queenside
                 newCastlingrights[(self.castlingcolour()|direction).value]=False
+                print(f"Lost {(self.castlingcolour()|direction)} rights")
+        if beatenpiece is not None:
+            if beatenpiece.is_rook():
+                if endcolumn in [0,7] and startrow==self.playing_sides_startrow():
+                    direction=Castling.Queenside if endcolumn==0 else Castling(0)
+                    newCastlingrights[beatenpiece.castlingcolour()|direction]=False
+                    print(f"Lost {beatenpiece.castlingcolour()|direction} rights")
                     
         return ChessPosition(NewBoard,not self.whitesmove,newenpassantablefile,newCastlingrights)
     
-    def en_passant_startrow(self) -> bool:
+    def en_passant_startrow(self) -> int:
         return 4 if self.whitesmove else 3
+    
+    def playing_sides_startrow(self)-> int:
+        return 0 if self.whitesmove else 7
     
     '''def en_passant_endrow(self)->bool:
         return 5 if self.whitesmove else 2'''
@@ -485,14 +515,30 @@ class ChessPosition():
             return True
         return piece.is_white()!=self.whitesmove
     
-    def square_containing_opponent(self,row,col):
+    def square_containing_opponent(self,row:int,col:int)-> bool:
         piece=self.Board[row][col]
         if piece is None:
             return False
         return piece.is_white()!=self.whitesmove
     
-    def square_attacked(self,row,col):
-        print("square_attacked not yet implemented!")
+    def can_take_king(self)->bool:
+        row,col=self.findnonMovingPlayersKing()
+        return self.square_reachable(row,col,True)
+
+    def square_reachable(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
+        for startrow in range(8):
+            for endrow in range(8):
+                if self.move_is_legal(startrow,endrow,row,col,allow_hanging_king):
+                    return True
+        return False
+
+
+    def square_attacked(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
+        Position_with_switched_player=ChessPosition(self.Board,not self.whitesmove, None, self.Castlingrights)
+        for startrow in range(8):
+            for endrow in range(8):
+                if Position_with_switched_player.move_is_legal(startrow,endrow,row,col,allow_hanging_king):
+                    return True
         return False
 
            
