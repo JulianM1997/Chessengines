@@ -51,6 +51,9 @@ class ChessPieces(Enum):
     def white_version_of_self(self)->"ChessPieces":
         return self if self.is_white() else self.invertcolor()
     
+    def demanded_color_version_of_self(self,white)->"ChessPieces":
+        return self if self.is_white()==white else self.invertcolor()
+    
     def symbol(self) -> str:
         match self:
             case ChessPieces.WhitePawn: 
@@ -152,7 +155,7 @@ def enumCastling():
         for j in [Castling(0),Castling.White]:
             yield i|j
 
-def legalkingmoves(row: int, column: int, Board: list[list], castlingrights:list[bool],castlingcolour: Castling)-> list[tuple[int,int]]:
+"""def legalkingmoves(row: int, column: int, Board: list[list], castlingrights:list[bool],castlingcolour: Castling)-> list[tuple[int,int]]:
     castlingmoves=[]
     if castlingrights[(Castling.Queenside|castlingcolour).value] and all(Board[row][i] is None for i in [1,2,3]):
         castlingmoves.append((row,2))
@@ -161,14 +164,15 @@ def legalkingmoves(row: int, column: int, Board: list[list], castlingrights:list
     ammounts=[-1,0,1]
     theoreticalmoves=[(leftstep,rightstep) for leftstep in ammounts for rightstep in ammounts if (leftstep,rightstep)!=(0,0)]
     return [(row+i,column+j) for (i,j) in theoreticalmoves if (0<=row+i<8 and 0<=column+j<8)]+castlingmoves
-
+"""
 def eval_by_randomgames(Position: "ChessPosition", numberofgames: int=100) -> float:
+    raise NotImplementedError("eval_by_randomgame not yet adapted to changes")
     score=0
     #Play random games and figure out and calculate average result.
     for i in range(numberofgames):
         Game=Position
-        while (moves:=Game.possibleMoves())!=[]:
-            Game=random.choice(moves)
+        while (moves:=Game.possible_moves())!=[]:
+            Game=Game.make_ramdom_move()
         gamevalue=1 if Game.whitesmove else -1
         gamevalue*=0 if Game.reachablesquares()==[] or Game.only_kings_on_board() else 1
         score+=gamevalue
@@ -249,7 +253,6 @@ class ChessPosition():
             if startrow!=endrow:
                 return False
             for i in enumCastling():
-                print(f"{i = }, {i.Castlinglegal(self) = }, {i.final_king_col() = }")
                 if i.Castlinglegal(self) and endcol==i.final_king_col():
                     return True
             return False
@@ -301,7 +304,13 @@ class ChessPosition():
                 if self.move_is_legal(row,col,endrow,endcol,allow_hanging_king):
                     yield endrow,endcol
 
-    def possibleMoves(self) -> list["ChessPosition"]:
+    def possible_moves(self,allow_hanging_king:bool=False):
+        for startrow in range(8):
+            for startcol in range(8):
+                if self.square_containing_own_piece(startrow,startcol):
+                    yield from (((startrow,startcol),i) for i in self.new_pieces_possible_moves(startrow,startcol,allow_hanging_king))
+
+    """def possibleMoves(self) -> list["ChessPosition"]:
         if self.only_kings_on_board():
             return []
         ReachablePositions=[]
@@ -314,28 +323,36 @@ class ChessPosition():
                         piecesmoves=self.piecessemilegalmoves(rownumber,columnnumber)
                         resulting_positions=[self.applymove(rownumber,columnnumber,*move) for move in piecesmoves]
                         ReachablePositions.extend([position for position in resulting_positions if not position.nonmovingPlayerinCheck()])
-        return ReachablePositions
+        return ReachablePositions"""
     
-    def randommove(self)-> "ChessPosition":
-        return random.choice(self.possibleMoves())
+    def random_move(self)-> tuple[tuple[int,int],tuple[int,int]]:
+        if list(self.possible_moves())==[]:
+            raise ValueError(str(self))
+        return random.choice(list(self.possible_moves(False)))
+    
+    def make_ramdom_move(self)->"ChessPosition":
+        ((startrow,startcol),(endrow,endcol))=self.random_move()
+        return self.applymove(startrow,startcol,endrow,endcol)
 
-
-    def findnonMovingPlayersKing(self)->tuple[int,int]:
+    def find_non_moving_players_king(self)->tuple[int,int]:
         searchedKing=ChessPieces.WhiteKing if not self.whitesmove else ChessPieces.BlackKing
         for rownumber in range(8):
             for columnnumber in range(8):
                 if self.Board[rownumber][columnnumber]==searchedKing:
                     return rownumber,columnnumber
         raise ValueError("Board doesn't seem to have a king")
+    
+    def is_game_over(self)->bool:
+        return next(self.possible_moves(),None)==None
                 
-    def nonmovingPlayerinCheck(self):
+    """def non_moving_player_in_check(self):
         kingssquare: tuple[int,int]=self.findnonMovingPlayersKing()
-        return kingssquare in self.reachablesquares()
+        return kingssquare in self.reachablesquares()"""
 
-    def reachablesquares(self) -> list[tuple[int,int]]:
-        """Returns: All possible moves any piece can make. Move might be illegal if own king hangs afterwards.
+    """def reachablesquares(self) -> list[tuple[int,int]]:
+        "Returns: All possible moves any piece can make. Move might be illegal if own king hangs afterwards.
         
-        Check, if pawn queened or enpassant happened before applying."""
+        Check, if pawn queened or enpassant happened before applying."
         ReachableSquares=[]
         for rownumber in range(8):
             for columnnumber in range(8):
@@ -344,14 +361,14 @@ class ChessPosition():
                     if piece_on_current_square.is_white()==self.whitesmove:
                         CurrentPiecesMoves=self.piecessemilegalmoves(rownumber,columnnumber)
                         ReachableSquares+=[newsquare[:2] for newsquare in CurrentPiecesMoves]
-        return ReachableSquares
+        return ReachableSquares"""
         
 
 
-    def piecessemilegalmoves(self, rowNumber: int, columnNumber: int)-> list:
-        """Returns: All possible moves a piece on a certain square can make. Move might be illegal if own king hangs afterwards.
+    """def piecessemilegalmoves(self, rowNumber: int, columnNumber: int)-> list:
+        "Returns: All possible moves a piece on a certain square can make. Move might be illegal if own king hangs afterwards.
         
-        Check, if pawn queened or enpassant happened before applying."""
+        Check, if pawn queened or enpassant happened before applying."
         piece=self.Board[rowNumber][columnNumber]
         if piece is None:
             raise ValueError("piecessemilegalmoves is not supposed to be called on empty squares!")
@@ -389,7 +406,7 @@ class ChessPosition():
         #print(str(self))
         #print(f"Legal moves of piece on {(rowNumber,columnNumber)} = {Actualmoves}")
         #sleep(5)
-        return Actualmoves
+        return Actualmoves"""
     
     def applymove(self, startrow: int, startcolumn: int, endrow: int, endcolumn: int):
         """Returns: Position after the inserted move.
@@ -444,14 +461,11 @@ class ChessPosition():
                 if startcolumn==0:
                     direction=Castling.Queenside
                 newCastlingrights[(self.castlingcolour()|direction).value]=False
-                print(f"Lost {(self.castlingcolour()|direction)} rights")
         if beatenpiece is not None:
             if beatenpiece.is_rook():
                 if endcolumn in [0,7] and startrow==self.playing_sides_startrow():
                     direction=Castling.Queenside if endcolumn==0 else Castling(0)
-                    newCastlingrights[beatenpiece.castlingcolour()|direction]=False
-                    print(f"Lost {beatenpiece.castlingcolour()|direction} rights")
-                    
+                    newCastlingrights[(beatenpiece.castlingcolour()|direction).value]=False
         return ChessPosition(NewBoard,not self.whitesmove,newenpassantablefile,newCastlingrights)
     
     def en_passant_startrow(self) -> int:
@@ -460,60 +474,97 @@ class ChessPosition():
     def playing_sides_startrow(self)-> int:
         return 0 if self.whitesmove else 7
     
-    '''def en_passant_endrow(self)->bool:
-        return 5 if self.whitesmove else 2'''
-    def only_kings_on_board(self) -> bool:
+    def only_kings_on_board(self) -> bool:#Suspect for deletion
         for i in range(8):
             for j in range(8):
                 if self.Board[i][j] not in [ChessPieces.BlackKing,ChessPieces.WhiteKing, None]:
                     return False
         return True
+    
     def eval_by_material(self) -> float:
         return sum(piece.pointvalue_in_game() for row in self.Board for piece in row if piece is not None)
     
     def eval_by_placement(self) -> float:
-        return sum((abs(3.5-i)+abs(3.5-j))*(piece.is_white()-0.5)/500 for i in range(8) for j in range(8) if (piece:=self.Board[i][j]) is not None)
+        return sum((abs(3.5-i)+abs(3.5-j))*(0.5-piece.is_white())/500 for i in range(8) for j in range(8) if (piece:=self.Board[i][j]) is not None)
     
     def eval_without_depth(self) -> float:
         return self.eval_by_material()+self.eval_by_placement()
 
-    def is_check(self):
-        ChessPosition(self.Board,not self.whitesmove,None,self.Castlingrights)
+    def invert_moving_color(self)-> "ChessPosition":
+        return ChessPosition(self.Board,not self.whitesmove,None,self.Castlingrights)
 
-    def eval(self, depth: int, depth0method=eval_by_material) -> tuple[float,"ChessPosition"]:
+    def is_check(self) -> bool:
+        return self.invert_moving_color().can_take_king()
+    
+    def is_draw(self) -> bool:
+        def is_draw_by_repetition()->bool:
+            raise NotImplementedError
+        def insufficient_material()->bool:
+            raise NotImplementedError
+        return is_draw_by_repetition() or insufficient_material()
+    
+    def eval(self, depth: int, depth0method=eval_without_depth, only_calc_if_worse_than:float|None=None) -> tuple[float,tuple[tuple[int,int],tuple[int,int]]|None]:
         """Returns: Evaluation of the position and the best move"""
-        moves=self.possibleMoves()
-        if len(moves)==0:
-            #Player is out of moves so he either lost or it's a draw
+        if self.is_game_over():
             sign=-1 if self.whitesmove else 1
             value=float('inf') if self.is_check() else 0
-            return sign*value, self
+            return sign*value, None
+        moves=self.possible_moves()
         if depth<=0:
-            return depth0method(self),self.randommove()
-        
-        cost=math.log(len(moves))#Incentivizing forcing moves
-        eval_and_move=[]
-        for move in moves:
-            directgain:float =abs(self.eval_by_material()-move.eval_by_material())#incentivizing captures
-            evaluation,_=move.eval(depth-(cost/(1+directgain)),depth0method)
-            eval_and_move.append((evaluation,move))
+            return depth0method(self),self.random_move()
+        #cost=math.log(len(moves))#Incentivizing forcing moves
+        bestismax:bool=True if self.whitesmove else False
+        bestmove=None
+        besteval=-float('inf') if self.whitesmove else float('inf')
+        if only_calc_if_worse_than is None:
+            only_calc_if_worse_than=-besteval
+        for startsquare,endsquare in moves:
+            newposition=self.applymove(*startsquare,*endsquare)
+            directgain:float =abs(self.eval_by_material()-newposition.eval_by_material()) #incentivizing captures
+            forcingmove: bool=(directgain!=0)or(newposition.is_check())
+            #if there is a move for opponent that's at least as good for him as the best answer to the current bestmove,
+            #New move can't be the better. So set in the recursive call only_calc_if_worse_than=besteval to avoid further calculation
+            eval,_=newposition.eval(depth-(1/(3 if forcingmove else 1)),depth0method,besteval)
+            if (eval>besteval)==bestismax:
+                besteval=eval
+                bestmove=startsquare,endsquare
+                if (besteval>=only_calc_if_worse_than)==bestismax:
+                    return besteval, bestmove
+        return besteval, bestmove
+
+
+        """
+        eval_and_move:list[tuple[float,tuple[tuple[int,int],tuple[int,int]]]]=[]
+        for startsquare,endsquare in moves:
+            newposition=self.applymove(*startsquare,*endsquare)
+            directgain:float =abs(self.eval_by_material()-newposition.eval_by_material()) #incentivizing captures
+            forcingmove: bool=(directgain!=0)or(newposition.is_check())
+            evaluation,_=newposition.eval(depth-(1/(3 if forcingmove else 1)),depth0method)
+            eval_and_move.append((evaluation,(startsquare,endsquare)))
         if self.whitesmove:
             return max(eval_and_move, key=lambda x: x[0])
-        return min(eval_and_move, key=lambda x: x[0])
+        return min(eval_and_move, key=lambda x: x[0])"""
     
-    def bestmove(self,*args):
-        return self.eval(*args)[1]
+    def bestmove(self,*args) -> tuple[tuple[int,int],tuple[int,int]]:
+        bestmove=self.eval(*args)[1]
+        if bestmove is None:
+            raise ValueError("Game is over! There are no legal moves to choose from")
+        return bestmove
     
     def castlingcolour(self) -> Castling:
         if self.whitesmove:
             return Castling.White
         return Castling(0)
     
-    def square_empty_or_containing_opponent(self,row,col):
+    
+    def square_containing_own_piece(self,row:int,col:int)->bool:
         piece=self.Board[row][col]
         if piece is None:
-            return True
-        return piece.is_white()!=self.whitesmove
+            return False
+        return piece.is_white()==self.whitesmove
+    
+    def square_empty_or_containing_opponent(self,row,col)-> bool:
+        return not self.square_containing_own_piece(row,col)
     
     def square_containing_opponent(self,row:int,col:int)-> bool:
         piece=self.Board[row][col]
@@ -522,7 +573,7 @@ class ChessPosition():
         return piece.is_white()!=self.whitesmove
     
     def can_take_king(self)->bool:
-        row,col=self.findnonMovingPlayersKing()
+        row,col=self.find_non_moving_players_king()
         return self.square_reachable(row,col,True)
 
     def square_reachable(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
@@ -534,7 +585,7 @@ class ChessPosition():
 
 
     def square_attacked(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
-        Position_with_switched_player=ChessPosition(self.Board,not self.whitesmove, None, self.Castlingrights)
+        Position_with_switched_player=self.invert_moving_color()
         for startrow in range(8):
             for endrow in range(8):
                 if Position_with_switched_player.move_is_legal(startrow,endrow,row,col,allow_hanging_king):
@@ -544,28 +595,27 @@ class ChessPosition():
            
 
         
-def randomgame():
+"""def randomgame()->None:
     Position=ChessPosition()
     while True:
         print(str(Position))
-        Position=Position.randommove()
-        sleep(1)
+        Position=Position.random_move()
+        sleep(1)"""
 
-def eval_in_randomgame(moves_before_eval,depth=0):
+"""def eval_in_randomgame(moves_before_eval,depth=0)->None:
     Position=ChessPosition()
     for i in range(moves_before_eval):
-        Position=Position.randommove()
+        Position=Position.random_move()
     print(str(Position))
-    print(Position.eval(depth))
+    print(Position.eval(depth))"""
 
-def Game_of_bestmoves(depth):
+"""def Game_of_bestmoves(depth)-> None:
     Position=ChessPosition()
     while True:
         print(str(Position))
-        print(len(Position.possibleMoves()))
-        Position=Position.bestmove(depth)
+        print(len(Position.possible_moves()))
+        Position=Position.bestmove(depth)"""
 
 
 if __name__=="__main__":
-    Game_of_bestmoves(5)
     pass

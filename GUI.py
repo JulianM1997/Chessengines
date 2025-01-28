@@ -1,9 +1,9 @@
 import pygame
 import Chessposition
 from typing import Iterable
+import time
 
 pygame.init()
-
 size = 400
 rows, cols = 8, 8
 cell_size = size // rows
@@ -11,9 +11,11 @@ screen = pygame.display.set_mode((size, size))
 font = pygame.font.Font(None, 36)
 WHITE = (200, 200, 200)
 BLACK = (100, 100, 100)
-RED_TINGE_AMMOUNT=50
-LIGHT_RED_TINGE_AMMOUNT=30
-FRAMETHICKNESS_WHEN_MARKED=5
+DARK_BLACK = (0, 0, 0)
+RED_TINGE_AMMOUNT = 50
+LIGHT_RED_TINGE_AMMOUNT = 30
+BLUE_TINGE_AMMOUNT = 50
+FRAMETHICKNESS_WHEN_MARKED = 5
 Piece_Images= {Chessposition.ChessPieces.BlackBishop: pygame.image.load('Schachfiguren\Chess_bdt45.svg'),
                Chessposition.ChessPieces.BlackQueen: pygame.image.load('Schachfiguren\Chess_qdt45.svg'),
                Chessposition.ChessPieces.BlackKing: pygame.image.load('Schachfiguren\Chess_kdt45.svg'),
@@ -28,20 +30,32 @@ Piece_Images= {Chessposition.ChessPieces.BlackBishop: pygame.image.load('Schachf
                Chessposition.ChessPieces.WhiteRook: pygame.image.load('Schachfiguren\Chess_rlt45.svg'),}
 
 
-def draw_cell(row,col,marked=False,lightlymarked=False):
+def draw_cell(row,col,marked=False,lightlymarked=False,markedblue=False):
     if marked and lightlymarked:
         raise SyntaxError("Can't mark a cell and fully and only lightly at the same time")
+    if marked or lightlymarked:
+        markedblue=False
     red_tinge=RED_TINGE_AMMOUNT if marked else LIGHT_RED_TINGE_AMMOUNT if lightlymarked else 0
-    color = (200+red_tinge, 200, 200) if (row + col) % 2 == 0 else (100+red_tinge, 100, 100)
+    blue_tinge=BLUE_TINGE_AMMOUNT if markedblue else 0
+    color = (200+red_tinge-blue_tinge, 200-blue_tinge, 200+blue_tinge) if (row + col) % 2 == 0 else (100+red_tinge, 100, 100+blue_tinge)
     pygame.draw.rect(screen, color, (col * cell_size, row * cell_size, cell_size, cell_size))
 
-def draw_board(cellmarked:bool, markedrow:int ,markedcol:int, othersquares_to_highlight: list[tuple[int,int]])->None:
+def draw_board(
+        cellmarked:bool, markedrow:int, markedcol:int, 
+        othersquares_to_highlight: list[tuple[int,int]], 
+        squares_to_highlight_blue: tuple[tuple[int,int],tuple[int,int]]
+        )->None:
+    if squares_to_highlight_blue is None:
+        squares_to_highlight_blue=tuple()
     for row in range(rows):
         for col in range(cols):
-            draw_cell(row,col,cellmarked and markedrow==row and markedcol==col, cellmarked and ((row,col) in othersquares_to_highlight))
+            marked=cellmarked and markedrow==row and markedcol==col
+            lightlymarked=cellmarked and ((row,col) in othersquares_to_highlight)
+            markedblue=((row,col) in squares_to_highlight_blue)
+            draw_cell(row,col,marked, lightlymarked,markedblue)
 
-def draw_text(row: int, col: int, text: str) -> None:
-    TEXT_COLOR=BLACK
+def draw_text(row: float, col: float, text: str) -> None:
+    TEXT_COLOR=DARK_BLACK
     text_surface = font.render(text, True, TEXT_COLOR)
     text_rect = text_surface.get_rect(center=(col * cell_size + cell_size // 2, row * cell_size + cell_size // 2))
     screen.blit(text_surface, text_rect)
@@ -57,7 +71,7 @@ def draw_position(Position:Chessposition.ChessPosition) -> None:
         for col in range(8):
             draw_piece(row, col, Position.Board[row][col])
 
-def main():
+def main(number_of_players:int, engine_depth:float=0, player_white:bool=True,delay:float=3):
     Position=Chessposition.ChessPosition()
 
     running = True
@@ -65,11 +79,39 @@ def main():
     selected_row=0
     selected_col=0
     Possible_Moves=[]
+    lastmove:tuple[tuple[int,int],tuple[int,int]]=None
+    Best_move_functions=[Chessposition.ChessPosition.eval_by_material,
+                         Chessposition.ChessPosition.eval_by_placement,
+                         Chessposition.ChessPosition.eval_without_depth]
+    
+    match number_of_players:
+        case 2:
+            Players_Turn=True
+        case 1:
+            Players_Turn=player_white
+        case 0:
+            Players_Turn=False
+        case _:
+            raise ValueError(f"number_of_players must be 0, 1 or 2.")
+    time_of_last_move=time.perf_counter()
+    game_active=True
+    Result="Result not in yet"
+    def makemove(startrow,startcol,endrow,endcol):
+        nonlocal Position, lastmove, Players_Turn, time_of_last_move, game_active, Result
+        Position=Position.applymove(startrow,startcol,endrow,endcol)
+        lastmove=((startrow,startcol),(endrow,endcol))
+        if number_of_players==1:
+            Players_Turn=not Players_Turn
+        time_of_last_move=time.perf_counter()
+        if Position.is_game_over():
+            game_active=False
+            Result="CHECKMATE" if Position.is_check() else "DRAW"
+        
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN and Players_Turn and game_active:
                 x, y = event.pos
                 row, col = y // cell_size, x // cell_size
                 piece=Position.Board[row][col]
@@ -78,7 +120,7 @@ def main():
                     PIECE_SELECTED=False
                     if not (row==selected_row and col==selected_col):
                         if Position.move_is_legal(selected_row,selected_col,row,col,False):
-                            Position=Position.applymove(selected_row,selected_col,row,col)
+                            makemove(selected_row,selected_col,row,col)
                         else:
                             print("not a legal move")
                     pass
@@ -88,12 +130,20 @@ def main():
                     PIECE_SELECTED=True
                     Possible_Moves=Position.new_pieces_possible_moves(selected_row,selected_col,False)
                     Possible_Moves=list(Possible_Moves)
+        if not Players_Turn and time.perf_counter()-time_of_last_move>delay and game_active:
+            #Position=Position.bestmove(engine_depth)
+            lastmove=Position.bestmove(engine_depth)
+            makemove(*lastmove[0],*lastmove[1])
         screen.fill((0, 0, 0))
-        draw_board(PIECE_SELECTED,selected_row,selected_col,Possible_Moves)
+        draw_board(PIECE_SELECTED,selected_row,selected_col,Possible_Moves,lastmove)
         draw_position(Position)
+        if not game_active:
+            draw_text(3.5,3.5,Result)
         pygame.display.flip()
 
-    pygame.quit()
+    
 
 if __name__=="__main__":
-    main()
+    main(1,engine_depth=1.9,delay=0.1)
+
+pygame.quit()
