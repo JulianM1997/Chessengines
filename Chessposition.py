@@ -128,6 +128,7 @@ class Castling(Flag):
             if Position.Board[row][col] is not None:
                 return False
             if Position.square_attacked(row,col):
+                print("Castling illegal because there's you can't castle through check")
                 return False
         return True
     
@@ -195,7 +196,12 @@ class ChessPosition():
     def __str__(self):
         return tabulate([["" if Piece is None else Piece.symbol() for Piece in row] for row in self.Board[::-1]],tablefmt="grid")
     
-    def move_is_legal(self,startrow,startcol,endrow,endcol):
+    def move_is_legal(self,startrow,startcol,endrow,endcol,allow_hanging_king=True):
+        if not allow_hanging_king:
+            if not self.move_is_legal(startrow,startcol,endrow,endcol,True):
+                return False
+            return not self.applymove(startrow,startcol,endrow,endcol).can_take_king()
+            #raise NotImplementedError("move_is_legal can't yet determine wether a move hangs a king")
         #print(startrow,startcol,endrow,endcol)
         if (startrow,startcol)==(endrow,endcol):
             return False
@@ -290,10 +296,10 @@ class ChessPosition():
         #Missing:
         #-->Avoiding Check
         #-->Recognizing draw
-    def new_pieces_possible_moves(self,row,col):
+    def new_pieces_possible_moves(self,row:int,col:int,allow_hanging_king:bool):
         for endrow in range(8):
             for endcol in range(8):
-                if self.move_is_legal(row,col,endrow,endcol):
+                if self.move_is_legal(row,col,endrow,endcol,allow_hanging_king):
                     yield endrow,endcol
 
     def possibleMoves(self) -> list["ChessPosition"]:
@@ -315,12 +321,13 @@ class ChessPosition():
         return random.choice(self.possibleMoves())
 
 
-    def findnonMovingPlayersKing(self):
+    def findnonMovingPlayersKing(self)->tuple[int,int]:
         searchedKing=ChessPieces.WhiteKing if not self.whitesmove else ChessPieces.BlackKing
         for rownumber in range(8):
             for columnnumber in range(8):
                 if self.Board[rownumber][columnnumber]==searchedKing:
                     return rownumber,columnnumber
+        raise ValueError("Board doesn't seem to have a king")
                 
     def nonmovingPlayerinCheck(self):
         kingssquare: tuple[int,int]=self.findnonMovingPlayersKing()
@@ -419,7 +426,7 @@ class ChessPosition():
         NewBoard[startrow][startcolumn]=None
 
         #Handling Castling
-        newCastlingrights=self.Castlingrights
+        newCastlingrights=self.Castlingrights[:]
         if movedpiece.is_king():
             for direction in [Castling.Queenside,Castling(0)]:
                 newCastlingrights[(self.castlingcolour()|direction).value]=False
@@ -509,14 +516,30 @@ class ChessPosition():
             return True
         return piece.is_white()!=self.whitesmove
     
-    def square_containing_opponent(self,row,col):
+    def square_containing_opponent(self,row:int,col:int)-> bool:
         piece=self.Board[row][col]
         if piece is None:
             return False
         return piece.is_white()!=self.whitesmove
     
-    def square_attacked(self,row,col):
-        print("square_attacked not yet implemented!")
+    def can_take_king(self)->bool:
+        row,col=self.findnonMovingPlayersKing()
+        return self.square_reachable(row,col,True)
+
+    def square_reachable(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
+        for startrow in range(8):
+            for endrow in range(8):
+                if self.move_is_legal(startrow,endrow,row,col,allow_hanging_king):
+                    return True
+        return False
+
+
+    def square_attacked(self,row:int,col:int,allow_hanging_king:bool=True)->bool:
+        Position_with_switched_player=ChessPosition(self.Board,not self.whitesmove, None, self.Castlingrights)
+        for startrow in range(8):
+            for endrow in range(8):
+                if Position_with_switched_player.move_is_legal(startrow,endrow,row,col,allow_hanging_king):
+                    return True
         return False
 
            
