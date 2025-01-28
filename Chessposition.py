@@ -128,9 +128,8 @@ class Castling(Flag):
             if Position.Board[row][col] is not None:
                 return False
             if Position.square_attacked(row,col):
-                print("Castling illegal because there's you can't castle through check")
                 return False
-        return True
+        return not Position.square_attacked(row,4)
     
     def squares(self)->tuple[tuple[int,int],tuple[int,int]]:
         """Returns: (Startrow,Startcolumn),(Endrow,endcolumn) of king"""
